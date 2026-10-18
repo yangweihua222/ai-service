@@ -16,11 +16,15 @@
 
 ## 界面预览
 
-面板操作录屏：[docs/demo/ai-service-demo.webm](docs/demo/ai-service-demo.webm)（浏览器可直接播放）
+完整对话录屏（2 次工具调用 + 1 次 RAG 检索 + 观测面板反查）：[docs/demo/ai-service-demo.webm](docs/demo/ai-service-demo.webm)（浏览器可直接播放）
 
-| 自带聊天页 | 可观测面板（工具调用统计 + 时间瀑布） |
+| Text2SQL 工具调用（可见生成的 SQL 与观察结果） | RAG 临床知识库（可见召回片段与引用） |
 |---|---|
-| ![聊天页](docs/screenshots/01-ai-chat-page.png) | ![可观测面板](docs/screenshots/02-observability.png) |
+| ![Text2SQL](docs/screenshots/02-tool-text2sql.png) | ![RAG](docs/screenshots/04-rag-dka.png) |
+
+| 可观测面板（请求审计 + 工具调用统计） | 单次 trace 时间瀑布（定位慢在哪个阶段） |
+|---|---|
+| ![可观测面板](docs/screenshots/05-observability.png) | ![trace 瀑布](docs/screenshots/06-observability-trace.png) |
 
 ## 目录结构
 ```
