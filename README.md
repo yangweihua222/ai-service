@@ -5,7 +5,7 @@
 
 ## 特性
 - **ReAct 编排**（规划 → 调用 → 观察 → 修正），可插拔 `Planner`（Mock 关键词路由 / 真实 LLM tool_calls）
-- **9 个业务工具**：原 5 个（RAG 临床知识库 / 系统使用说明 RAG / Text2SQL 学员数据 / 轮转可行性检测 / 通知推送）+ **4 个真实后端工具**（提交请假 / 值班查询 / 缺勤查询 / 教学活动，调用 Laravel `/api/dify/tools/*`，小萱同源）
+- **22 个业务工具**：原 9 个（RAG 临床知识库 / 系统使用说明 RAG / Text2SQL 学员数据 / 轮转可行性检测 / 通知推送 + 4 个 Laravel 后端工具）+ **13 个实习管理平台工具**（查轮转 / 值班 / 考勤 / 出勤统计 / 请假记录 / 教学活动 / 公告 / 考核 / 病历 / 待办汇总 / **提交请假** / 科室学生 / 待审批，调用 `/api/v1/ai/tools/call` 并透传用户 token）
 - **LLM 抽象层**：Mock（零依赖跑通）/ OpenAI 兼容（DeepSeek / 通义 / 智谱 复用）
 - **多租户 RBAC**：租户隔离 + admin / teacher / student 三级权限；向量侧按 `tenant_id` 行级过滤（`WHERE tenant_id=?`，与业务数据同库，生产标准做法）
 - **RAG 真向量库**：**pgvector**（PostgreSQL 向量扩展，`kb_chunks` 表 + HNSW ANN 索引）；**混合检索** = 向量召回 + BM25 关键词召回 → RRF 融合 → Rerank
@@ -13,6 +13,14 @@
 - **MCP Server**：基于官方 SDK 将 9 个工具封装为标准 MCP（`pip install mcp` 后真实可起），与 Agent 共享同一份工具定义
 - **Text2SQL 真执行**：本地 SQLite 教学库（`./teaching.db`，首次自动建表灌种子数据）真跑 SQL；执行前过**安全闸门**（只读校验 + 租户强制过滤），租户值参数绑定防注入
 - **评测集驱动**：RAG 4/4、使用说明 4/4、Text2SQL 5/5（**且每条真执行验证跑通**，与简历口径一致）
+
+## 界面预览
+
+面板操作录屏：[docs/demo/ai-service-demo.webm](docs/demo/ai-service-demo.webm)（浏览器可直接播放）
+
+| 自带聊天页 | 可观测面板（工具调用统计 + 时间瀑布） |
+|---|---|
+| ![聊天页](docs/screenshots/01-ai-chat-page.png) | ![可观测面板](docs/screenshots/02-observability.png) |
 
 ## 目录结构
 ```
@@ -30,6 +38,7 @@ ai-service/
 │   ├── memory.py         # 对话记忆（短期 + 长期压缩）
 │   ├── rbac.py           # 多租户 RBAC + 鉴权依赖
 │   ├── backend.py        # 真实后端客户端（调用 Laravel /api/dify/tools/*，小萱同源）
+│   ├── internship.py     # 实习管理平台客户端（/api/v1/ai/tools/call，透传用户 token）
 │   └── mcp_server.py     # MCP Server（可选, 需 pip install mcp）
 ├── scripts/
 │   └── stub_backend.py   # 本地桩后端（模仿 Laravel 4 个工具接口，用于不碰生产库的验证）
@@ -142,6 +151,8 @@ python scripts/ingest_doc.py --file xxx.md --tenant other-hospital  # 其他租�
 `.env` 设 `LLM_MODE=openai`，填 `OPENAI_API_KEY`（兼容 DeepSeek / 通义等：改 `OPENAI_API_BASE` / `OPENAI_MODEL`）。
 - `OpenAICompatLLM` 已用标准库 `urllib` 实现 `/chat/completions` 调用与 `tool_calls` 解析，无需额外依赖。
 - 真实多轮工具历史已在 `agent.py` 写入 `assistant(tool_calls)`，结构对齐 OpenAI 格式。
+- 实测可用模型：`qwen3.8-max-0902`（主）/ `qwen3.8-flash`（再决策步）/ `qwen3.8-27b` / `kimi-k3`；旧的 `qwen-plus-2025-07-28` 已下线（404）。
+- **提速**：`LLM_ENABLE_THINKING=0` 关闭思维链输出，实测单轮 **19.7s → 7.1s**（`enable_thinking` 写在 `_build_payload` 里，流式与非流式共用同一份载荷）。
 
 ## MCP Server
 ```bash
@@ -181,6 +192,63 @@ curl -X POST http://127.0.0.1:8000/api/v1/chat \
 - **补卡**：后端 `OaProcess::TYPE_CHECKIN='补卡申请'` 已支持，但**未暴露成 `/api/dify/tools` 接口**（小萱当前也没独立补卡工具）。
   要做需在 Laravel 加一个补卡建单端点，再在 `app/tools.py` 加 `tool_submit_card_reissue`（复用 `backend.call_tool("submit_card_reissue", ...)`）。
 
+
+## 对接实习管理平台（2026-10-18 实跑）
+
+本服务作为「临床实习教学管理平台」的 AI 层落地：前端对话框直连本服务，本服务识别意图后回调 Laravel 工具网关取数据，RAG 检索留在本侧。
+
+```
+浏览器 :5173 ──SSE 对话──> ai-service :8001 ──工具回调(透传用户 token)──> Laravel :8000
+```
+
+### 协议
+
+`POST /api/v1/chat/stream`（SSE），身份走请求头：
+
+| 头 | 含义 |
+|---|---|
+| `X-Tenant-Id` | 租户隔离 |
+| `X-User-Id` / `X-User-Num` | 用户标识 / 学号工号 |
+| `X-Role` | admin / teacher / student，决定可见工具集 |
+| `X-Internship-Token` | 平台 Sanctum token，回调时原样透传 |
+
+响应是 SSE 事件流：`{type:"steps"}`（工具名 + 参数 + observation）→ `{type:"token"}` 逐字输出 → `[DONE]` 结束。前端气泡因此能看到每一步工具调用，不是黑盒。
+
+### 13 个实习工具
+
+查轮转 / 值班 / 考勤 / 出勤统计 / 请假记录 / 教学活动 / 公告 / 考核 / 病历 / 待办汇总 / **提交请假**，以及教师专属的**科室学生查询**、**待审批查询**。
+
+权限由回调携带的 token 决定——学生调教师专属工具，Laravel 返回 403。工具返回给 LLM 的日期在网关侧统一格式化，避免 UTC ISO 串被模型误读。
+
+### 当前运行配置
+
+```ini
+PORT=8001
+LLM_MODE=openai
+OPENAI_MODEL=qwen3.8-max-0902        # 首轮选型与综合
+OPENAI_MODEL_FAST=qwen3.8-flash      # 再决策步
+LLM_ENABLE_THINKING=0                # 关思维链，提速
+EMBEDDING_MODE=mock                  # 开发用本地哈希兜底；换 bge 即走真向量
+MEMORY_BACKEND=memory                # 进程内记忆，重启丢上下文（切 redis 无需改代码）
+```
+
+> 注意：变量名是 `OPENAI_API_BASE`（不是 `OPENAI_BASE_URL`）。
+
+### 实测结果
+
+- 单轮对话 **7.1s**（真实 LLM 决策 + 工具回调 + 生成）
+- 查轮转 → 返回 3 条分段明细，日期正确
+- 「帮我请明天一天的事假」→ 自动算出日期 → 真实提交请假单并回单号
+
+### 真实踩过的坑
+
+1. `run_stream` 里工具耗时打点写在 `else` 块外而 `t0` 只在块内赋值 → 参数校验失败时 `UnboundLocalError`，SSE 流崩、前端收到空响应。改为 `finally` 记录。
+2. 规则 Planner 的 args 构造用 `else` 兜底，导致新增的 `internship_*` 工具被塞进别的工具的参数结构而校验失败。补专属分支。
+3. 规则 Planner 写死日期，跨月查询全错。改为 `date.today()` 动态取。
+4. LLM 有时序盲区，把「今天」幻觉成别的月份 → system prompt 动态注入当前日期与星期。
+5. qwen3 默认输出思维链，实测 19.7s → 载荷加 `enable_thinking:false` 后降到 7.1s。
+
+> 给本服务加工具必须同步改三处：工具实现/注册、RBAC 角色权限、Planner 的关键词路由与 args 构造。漏掉 args 构造会静默全部失败。
 
 ## 评测集（简历口径）
 - RAG：`app/rag.py::RAG_EVAL`，Top-1 命中 4/4
