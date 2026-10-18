@@ -14,6 +14,25 @@
 - **Text2SQL 真执行**：本地 SQLite 教学库（`./teaching.db`，首次自动建表灌种子数据）真跑 SQL；执行前过**安全闸门**（只读校验 + 租户强制过滤），租户值参数绑定防注入
 - **评测集驱动**：RAG 4/4、使用说明 4/4、Text2SQL 5/5（**且每条真执行验证跑通**，与简历口径一致）
 
+## 架构
+
+```mermaid
+flowchart LR
+    U["浏览器<br/>自带聊天页 / 实习系统悬浮球"] -->|"SSE /api/v1/chat/stream"| F["FastAPI :8001"]
+    F --> AG["ReAct Agent<br/>规划 → 工具 → 观察 → 再决策"]
+    AG -.->|"按角色过滤工具白名单"| RB["RBAC<br/>X-Role / 租户隔离"]
+    AG --> RAG["query_knowledge_base<br/>临床知识库 RAG"]
+    AG --> SQL["query_teaching_data<br/>Text2SQL 学员数据"]
+    AG --> IT["internship_* 工具 ×13"]
+    IT -->|"回调工具网关<br/>透传 X-Internship-Token"| LA["实习平台 Laravel API :8000"]
+    RAG --> PG[("PostgreSQL + pgvector<br/>向量召回 + BM25 → RRF")]
+    SQL --> SL[("SQLite 教学库<br/>只读闸门 + 租户绑定")]
+    AG <--> LLM["LLM qwen3.8-max-0902<br/>enable_thinking=0"]
+    F --> OBS["/observability<br/>审计 / token / 耗时瀑布"]
+```
+
+**关键设计**：Agent 不直接碰业务库。查实习数据一律走 `internship_*` 工具回调 Laravel 网关，由业务后端按调用者 token 判定权限（学生调老师工具 = 403）；RAG 与 Text2SQL 只读，且都在 SQL 层强制 `tenant_id` 过滤。
+
 ## 界面预览
 
 完整对话录屏（2 次工具调用 + 1 次 RAG 检索 + 观测面板反查）：[docs/demo/ai-service-demo.webm](docs/demo/ai-service-demo.webm)（浏览器可直接播放）
