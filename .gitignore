@@ -40,3 +40,4 @@ logs/
 *.bak*
 app/*.fixed
 app/memory_new.py
+preview-github.html
