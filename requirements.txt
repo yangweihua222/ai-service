@@ -1,0 +1,35 @@
+# AI 教学助手 Agent 服务 · 依赖
+# 最小可运行（mock 模式）：fastapi + uvicorn + pydantic + python-dotenv
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.0
+python-dotenv>=1.0
+
+# 可观测性：Prometheus 指标端点 /metrics（Grafana 看板数据源，生产监控必需）
+prometheus_client>=0.20
+
+# 测试
+pytest>=8.0
+httpx>=0.27
+
+# SQL AST 解析（Text2SQL 安全闸门）：用 sqlglot 强制 tenant_id 等值谓词
+# 2026-09-08 code review P0 必修：替代原字符串包含检查
+sqlglot>=20.0
+
+# 真实向量库（pgvector：PostgreSQL 向量扩展 + HNSW ANN 检索）：RAG 默认依赖
+# 前置：本地安装 PostgreSQL 并启用 pgvector 扩展（见 README）
+psycopg2-binary>=2.9
+
+# 正式 Embedding（bge 模式默认）：本地 bge-m3 模型（sentence-transformers 加载，1024 维）
+# 首次运行自动从 HuggingFace（hf-mirror 镜像）下载模型到 ./models/bge-m3
+sentence-transformers>=3.0
+
+# 真实平台直连（宣武实习管理平台：AES-256-CBC 加密信封 + Sanctum 登录）
+# 见 app/xuanwu_client.py；仅在 .env 配置 XUANWU_* 时用到
+requests>=2.31
+pycryptodome>=3.20
+
+# ---- 以下为可选依赖，按需启用 ----
+# MCP Server（将工具暴露为标准 MCP）：pip install mcp
+# 真实 LLM / Embedding API（OpenAI 兼容）：pip install openai
+# 大规模向量检索（亿级/GPU，仅生产演进需要）：Milvus SDK（pip install pymilvus）

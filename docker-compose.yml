@@ -1,0 +1,90 @@
+# AI 教学助手 Agent 服务 · Docker 编排（ai-service + PostgreSQL(pgvector)）
+#
+# 使用（ai-service 目录）：
+#   docker compose up -d --build
+#   curl http://localhost:8000/health
+#
+# 前置：
+#   1) 本机已装 Docker Desktop（Windows 需开启 WSL2 后端）。
+#   2) .env 里把 PGVECTOR_DSN 的 host 改为 pg（compose 网络内服务名）：
+#        PGVECTOR_DSN=postgresql://postgres:你的密码@pg:5432/ai_service
+#      并把 POSTGRES_PASSWORD 加到 .env（与上面密码一致）；LLM_MODE 默认 mock 即可跑通。
+#   3) 首次启动自动下载 bge-m3 到 ./models（挂载卷，约 2.3GB，仅一次）；不想下载可用
+#      EMBEDDING_MODE=mock（本地哈希兜底，仅开发调试）。
+#
+# 挂载说明：
+#   ./models        → /app/models     bge-m3 权重（不进镜像，模型与镜像解耦）
+#   ai_teaching_db  → /app/teaching.db Text2SQL 本地教学库（命名卷持久化）
+#   ./scripts/stub_backend.py 如需联调真实后端工具，另起: python scripts/stub_backend.py
+
+services:
+  ai-service:
+    build: .
+    container_name: ai-service
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # 容器内数据库地址用 compose 服务名 pg（覆盖 .env 里的 localhost 写法）；
+      # 密码从 .env 的 POSTGRES_PASSWORD 读取（compose 自动插值，密钥不进镜像/不落 yaml）。
+      PGVECTOR_DSN: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@pg:5432/ai_service
+      HOST: 0.0.0.0
+      PORT: "8000"
+    volumes:
+      - ./models:/app/models          # bge-m3 权重（首次自动下载到此）
+      - ai_teaching_db:/app/teaching.db
+    depends_on:
+      pg:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # PostgreSQL + pgvector（官方预装扩展镜像，RAG 真向量库依赖）
+  pg:
+    image: pgvector/pgvector:pg16
+    container_name: ai-service-pg
+    environment:
+      POSTGRES_DB: ai_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"                    # 可选：本机 pgAdmin/DBeaver 直连排查
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ---- 监控栈：Prometheus 抓取 + Grafana 可视化（方案 A 统一面板）----
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ai-service-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.compose.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - ai-service
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ai-service-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  ai_teaching_db:

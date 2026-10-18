@@ -1,0 +1,15 @@
+# Prometheus 抓取配置（docker compose 内使用，target 用 compose 服务名 ai-service）
+# docker-compose 已将其挂载到 /etc/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: ai-teaching-assistant
+
+scrape_configs:
+  - job_name: ai-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ai-service:8000']
+        labels:
+          service: ai-teaching-assistant

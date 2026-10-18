@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 教学助手 · 本地问答台</title>
+<style>
+  :root {
+    --brand: #2563eb;
+    --brand-2: #0ea5a4;
+    --bg: #f4f6fa;
+    --card: #ffffff;
+    --line: #e5e9f0;
+    --text: #1f2937;
+    --text-2: #6b7280;
+    --user-bubble: #2563eb;
+    --step-bg: #f0fdfa;
+    --step-line: #0ea5a4;
+    --warn-bg: #fffbeb;
+    --warn-line: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    display: flex;
+  }
+
+  /* ===== 侧边栏 ===== */
+  aside {
+    width: 300px;
+    min-width: 300px;
+    background: var(--card);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    padding: 20px 16px;
+    gap: 16px;
+    overflow-y: auto;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand .logo {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--brand), var(--brand-2));
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700;
+  }
+  .brand h1 { font-size: 16px; font-weight: 700; }
+  .brand p { font-size: 12px; color: var(--text-2); }
+
+  .status {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 8px; background: #f8fafc; border: 1px solid var(--line);
+    font-size: 12px; color: var(--text-2);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none; }
+  .dot.ok { background: #22c55e; }
+  .dot.err { background: #ef4444; }
+
+  .field label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 6px; font-weight: 600; }
+  .field select {
+    width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: #fff; color: var(--text); font-size: 13px; outline: none; cursor: pointer;
+  }
+  .field select:focus { border-color: var(--brand); }
+
+  .section-title {
+    font-size: 12px; font-weight: 700; color: var(--text-2);
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .tools {
+    display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto;
+  }
+  .tool {
+    padding: 8px 10px; border-radius: 8px; background: #f8fafc; border: 1px solid var(--line);
+    font-size: 12px; line-height: 1.45;
+  }
+  .tool b { color: var(--brand); font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11.5px; }
+  .tool span { color: var(--text-2); display: block; margin-top: 2px; }
+
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .quick button {
+    border: 1px solid var(--line); background: #fff; color: var(--text);
+    padding: 6px 10px; border-radius: 16px; font-size: 12px; cursor: pointer; text-align: left;
+  }
+  .quick button:hover { border-color: var(--brand); color: var(--brand); }
+
+  .hint { font-size: 11px; color: var(--text-2); line-height: 1.6; }
+
+  /* ===== 主区 ===== */
+  main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .chat { flex: 1; overflow-y: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 16px; }
+
+  .msg { display: flex; gap: 10px; max-width: 860px; width: 100%; }
+  .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex: none;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff;
+  }
+  .msg.user .avatar { background: var(--brand); }
+  .msg.ai .avatar { background: linear-gradient(135deg, var(--brand-2), var(--brand)); }
+  .bubble {
+    padding: 10px 14px; border-radius: 12px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+    max-width: 100%;
+  }
+  .msg.user .bubble { background: var(--user-bubble); color: #fff; border-top-right-radius: 4px; }
+  .msg.ai .bubble {
+    background: var(--card); border: 1px solid var(--line); border-top-left-radius: 4px;
+  }
+  .msg.ai .content { flex: 1; min-width: 0; }
+
+  /* 工具轨迹 */
+  .trace {
+    margin-bottom: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff;
+  }
+  .trace-head {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;
+    font-size: 12px; font-weight: 600; color: var(--text-2); background: #f8fafc; user-select: none;
+  }
+  .trace-head .n { color: var(--brand); }
+  .trace-body { display: none; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .trace.closed .trace-body { display: none; }
+  .step { border-left: 3px solid var(--step-line); background: var(--step-bg); border-radius: 6px; padding: 8px 10px; }
+  .step-head { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; font-weight: 700; color: #0f766e; }
+  .step-head .idx { color: var(--text-2); font-weight: 500; margin-right: 4px; }
+  .step .k { font-size: 11px; color: var(--text-2); margin: 4px 0 1px; font-weight: 600; }
+  .step .v { font-size: 12px; white-space: pre-wrap; word-break: break-word; color: var(--text); max-height: 90px; overflow-y: auto; }
+  .step .v.args { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; color: #475569; }
+
+  .typing { display: inline-flex; gap: 4px; padding: 4px 0; }
+  .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-2); animation: blink 1.2s infinite; }
+  .typing i:nth-child(2) { animation-delay: .2s; }
+  .typing i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+
+  /* 输入区 */
+  .composer { border-top: 1px solid var(--line); background: #fff; padding: 14px 24px; }
+  .composer-inner { display: flex; gap: 10px; max-width: 900px; margin: 0 auto; align-items: flex-end; }
+  textarea {
+    flex: 1; resize: none; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+    font-size: 14px; font-family: inherit; outline: none; line-height: 1.6; max-height: 160px; color: var(--text);
+  }
+  textarea:focus { border-color: var(--brand); }
+  button.send {
+    border: none; background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff;
+    padding: 12px 22px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; flex: none;
+  }
+  button.send:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* 可观测：每条回答下方显示 trace_id，可到 /observability 反查 */
+  .trace-id {
+    font-size: 11px; color: var(--text-2); margin-top: 6px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .trace-id a { color: var(--brand); text-decoration: none; }
+  .trace-id a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <aside>
+    <div class="brand">
+      <div class="logo">AI</div>
+      <div>
+        <h1>AI 教学助手</h1>
+        <p>本地问答台 · 真模型真执行</p>
+      </div>
+    </div>
+
+    <div class="status" id="status"><span class="dot" id="dot"></span><span id="statusText">连接中…</span></div>
+
+    <div class="field">
+      <label>当前角色（RBAC）</label>
+      <select id="roleSel">
+        <option value="teacher" selected>teacher · 带教老师</option>
+        <option value="student">student · 学员</option>
+        <option value="admin">admin · 管理员</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>租户（多租户隔离）</label>
+      <select id="tenantSel">
+        <option value="capital-medical" selected>capital-medical · 首都医科大</option>
+        <option value="other-hospital">other-hospital · 其他医院</option>
+      </select>
+    </div>
+
+    <div>
+      <div class="section-title">可用工具</div>
+      <div class="tools" id="tools"></div>
+    </div>
+
+    <div>
+      <div class="section-title">快捷提问</div>
+      <div class="quick" id="quick"></div>
+    </div>
+
+    <div class="hint">
+      本页直连本地 AI 服务（FastAPI + SSE 流式）。<br>
+      换角色 / 换租户后工具清单会按 RBAC 变化。<br>
+      OA 类工具（请假/值班/缺勤/教学活动）需配置后端地址才走真实 Laravel。<br>
+      <a href="/observability" target="_blank" style="color:var(--brand);font-weight:600">📊 打开可观测面板</a>（审计 / token / 指标）
+    </div>
+  </aside>
+
+  <main>
+    <div class="chat" id="chat"></div>
+    <div class="composer">
+      <div class="composer-inner">
+        <textarea id="input" rows="1" placeholder="输入问题，例如：DKA 如何补液？／ 张三各科室成绩怎么样？／ 检查轮转计划可行性…"></textarea>
+        <button class="send" id="sendBtn">发送</button>
+      </div>
+    </div>
+  </main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const chatEl = $('#chat'), inputEl = $('#input'), sendBtn = $('#sendBtn');
+const roleSel = $('#roleSel'), tenantSel = $('#tenantSel');
+let sessionId = 'web-' + Math.random().toString(36).slice(2, 10);
+let busy = false;
+
+const QUICK_QUESTIONS = [
+  ['临床RAG', 'DKA（糖尿病酮症酸中毒）如何补液？'],
+  ['成绩查询', '张三各科室轮转成绩怎么样？'],
+  ['缺卡查询', '张三有哪些缺卡记录？'],
+  ['轮转可行性', '检查当前轮转计划是否可行？'],
+  ['使用说明', '怎么提交请假？'],
+  ['值班查询', '查询张三 2026-03 月的值班安排'],
+];
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function fmtJson(o) {
+  try { return JSON.stringify(o, null, 2); } catch { return String(o); }
+}
+
+/* ---------- 状态与工具清单 ---------- */
+async function loadStatus() {
+  try {
+    const r = await fetch('/health');
+    const j = await r.json();
+    $('#dot').classList.add('ok');
+    $('#statusText').textContent = '服务在线 · LLM: ' + j.llm_mode + ' · 9 工具已注册';
+  } catch (e) {
+    $('#dot').classList.add('err');
+    $('#statusText').textContent = '服务未连接（请先启动 ai-service）';
+  }
+}
+
+async function loadTools() {
+  const role = roleSel.value;
+  try {
+    const r = await fetch('/api/v1/tools', { headers: { 'X-Role': role, 'X-Tenant-Id': tenantSel.value } });
+    const j = await r.json();
+    const box = $('#tools');
+    box.innerHTML = '';
+    (j.tools || []).forEach(t => {
+      const d = document.createElement('div');
+      d.className = 'tool';
+      d.innerHTML = '<b>' + esc(t.name) + '</b><span>' + esc(t.description) + '</span>';
+      box.appendChild(d);
+    });
+    if (!j.tools.length) box.innerHTML = '<div class="tool">该角色无可调用工具</div>';
+  } catch (e) {
+    $('#tools').innerHTML = '<div class="tool">工具清单加载失败</div>';
+  }
+}
+
+function renderQuick() {
+  const box = $('#quick');
+  box.innerHTML = '';
+  QUICK_QUESTIONS.forEach(([label, q]) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = q;
+    b.onclick = () => { inputEl.value = q; send(); };
+    box.appendChild(b);
+  });
+}
+
+/* ---------- 消息渲染 ---------- */
+function addMsg(role, text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + role;
+  wrap.innerHTML = '<div class="avatar">' + (role === 'user' ? '我' : 'AI') + '</div>' +
+    '<div class="' + (role === 'user' ? 'bubble' : 'content') + '">' +
+    (role === 'user' ? esc(text) : '') +
+    '</div>';
+  chatEl.appendChild(wrap);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return wrap;
+}
+
+function addTrace(contentEl, steps) {
+  const trace = document.createElement('div');
+  trace.className = 'trace';
+  trace.innerHTML =
+    '<div class="trace-head">🔍 工具调用轨迹 · <span class="n">' + steps.length + ' 步</span><span style="margin-left:auto">点击展开/收起</span></div>' +
+    '<div class="trace-body"></div>';
+  const body = trace.querySelector('.trace-body');
+  steps.forEach((s, i) => {
+    const step = document.createElement('div');
+    step.className = 'step';
+    step.innerHTML =
+      '<div class="step-head"><span class="idx">' + (i + 1) + '.</span>' + esc(s.tool) + '</div>' +
+      (Object.keys(s.args || {}).length ? '<div class="k">参数 args</div><div class="v args">' + esc(fmtJson(s.args)) + '</div>' : '') +
+      '<div class="k">观察结果 observation</div><div class="v">' + esc(s.observation || '(空)') + '</div>';
+    body.appendChild(step);
+  });
+  trace.querySelector('.trace-head').onclick = () => trace.classList.toggle('closed');
+  contentEl.appendChild(trace);
+}
+
+/* ---------- 发送（SSE 流式） ---------- */
+async function send() {
+  const q = inputEl.value.trim();
+  if (!q || busy) return;
+  busy = true; sendBtn.disabled = true;
+  inputEl.value = '';
+  addMsg('user', q);
+
+  const aiWrap = addMsg('ai', '');
+  const content = aiWrap.querySelector('.content');
+  const typing = document.createElement('div');
+  typing.className = 'typing';
+  typing.innerHTML = '<i></i><i></i><i></i>';
+  content.appendChild(typing);
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Role': roleSel.value,
+    'X-Tenant-Id': tenantSel.value,
+    'X-User-Num': roleSel.value === 'student' ? '2026001' : 'T0001',
+  };
+
+  try {
+    const res = await fetch('/api/v1/chat/stream', {
+      method: 'POST', headers,
+      body: JSON.stringify({ message: q, session_id: sessionId, stream: true }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    const traceId = res.headers.get('X-Trace-Id') || '';
+    typing.remove();
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    content.appendChild(bubble);
+    if (traceId) {
+      const tid = document.createElement('div');
+      tid.className = 'trace-id';
+      tid.innerHTML = '🆔 trace: ' + esc(traceId.slice(0, 8)) +
+        ' · <a href="/observability" target="_blank">在 /observability 反查</a>';
+      content.appendChild(tid);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let stepsRendered = false;
+    let answer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 2);
+        if (!chunk.startsWith('data:')) continue;
+        const payload = chunk.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        let data;
+        try { data = JSON.parse(payload); } catch { continue; }
+        if (data.type === 'steps' && !stepsRendered) {
+          stepsRendered = true;
+          if (data.steps && data.steps.length) addTrace(content, data.steps);
+        } else if (data.type === 'token') {
+          answer += data.text;
+          bubble.textContent = answer;
+          chatEl.scrollTop = chatEl.scrollHeight;
+        }
+      }
+    }
+    if (!answer) bubble.textContent = '(无回答内容)';
+  } catch (e) {
+    typing.remove();
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.style.color = '#dc2626';
+    bubble.textContent = '请求失败：' + e.message + '（请确认 ai-service 已启动）';
+    content.appendChild(bubble);
+  } finally {
+    busy = false; sendBtn.disabled = false;
+    inputEl.focus();
+  }
+}
+
+/* ---------- 事件 ---------- */
+sendBtn.onclick = send;
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+inputEl.addEventListener('input', () => {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
+});
+roleSel.onchange = loadTools;
+tenantSel.onchange = loadTools;
+
+/* ---------- 初始化 ---------- */
+renderQuick();
+loadStatus();
+loadTools();
+addMsg('ai', '你好，我是 AI 教学助手 👋\n\n我可以：\n① 查临床知识（RAG 带引用）——如「DKA 如何补液」\n② 查学员数据（Text2SQL 真执行）——如「张三成绩」「张三缺卡」\n③ 校验轮转计划可行性\n④ 查实习系统使用说明\n\n左侧可切换角色 / 租户，右上快捷提问一键体验。');
+</script>
+</body>
+</html>

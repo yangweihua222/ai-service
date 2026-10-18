@@ -1,0 +1,42 @@
+# 向量库数据在 PostgreSQL（pgvector）中，本地无独立文件目录
+
+# 本地 bge-m3 模型权重（约 2GB，首次自动下载，不入库）
+models/
+
+# Text2SQL 本地教学库（由 _SEED_ROWS 种子数据自动重建）
+*.db
+*.sqlite
+*.sqlite3
+
+# 环境与缓存
+# 注意：.env 只匹配文件名恰为 .env 的文件，覆盖不了 .env.bak* 等备份，
+#       必须用 .env*（再排除模板 .env.example）才不漏密钥。
+.env*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 第三方监控软件：Grafana / Prometheus 的二进制、解压目录、运行时数据、下载的 zip（巨大且非本项目代码，绝不入库）
+monitoring/bin/
+monitoring/grafana/
+
+# 本地向量库索引（Chroma 持久化产物，可重建，不入库）
+chroma_db/
+.vector_store/
+
+# 本地评测产物（bench_out 下的 json 是跑出来的结果，非源码）
+bench_out/
+monitoring/grafana/
+
+# 日志
+*.log
+# 运行期日志/审计流水（含真实提问内容，属业务数据，不入库）
+logs/
+
+# 代码备份与实验性文件（保留在本地磁盘，但不入库）
+*.bak*
+app/*.fixed
+app/memory_new.py
