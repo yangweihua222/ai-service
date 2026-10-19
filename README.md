@@ -1,6 +1,6 @@
 # AI 教学助手（实习平台 AI 服务 · Python / FastAPI）
 
-临床实习教学管理平台的 AI 层：前端对话框通过 SSE 直连本服务，本服务做意图识别与工具编排，查业务数据时回调平台 Laravel 网关（透传调用者 token，权限由业务后端判定），RAG 检索在本服务内完成。
+临床实习教学管理平台的 AI 层，为业务系统接入 AI 对话能力：学员和教师在平台对话框里用自然语言提问——查自己的轮转安排、值班、考勤、请假记录、考核成绩，或咨询临床知识——本服务负责意图识别与工具编排，把一句话转成一串具体的业务查询。查业务数据时回调平台 Laravel 工具网关并透传调用者 token，权限由业务后端按调用者身份判定（学生看不到教师专属数据）；RAG 知识检索在本服务内完成，按租户行级隔离。前端对话框通过 SSE 直连本服务，逐字流式输出，且每一步工具调用对用户可见。
 
 ## 特性
 
@@ -34,7 +34,7 @@ flowchart LR
 
 ## 界面预览
 
-完整对话录屏（工具调用 + RAG 检索 + 观测面板反查）：[docs/demo/ai-service-demo.webm](docs/demo/ai-service-demo.webm)（浏览器可直接播放）
+完整对话录屏见实习平台仓库（前端悬浮球直连本服务，含工具调用 + RAG 检索 + 观测面板反查）。
 
 | 自带聊天页（可见工具调用步骤与参数） | RAG 临床知识库（可见召回片段与引用） |
 |---|---|
@@ -64,7 +64,7 @@ ai-service/
 │   ├── backend.py        # 通用后端客户端（/api/dify/tools/*）
 │   └── observability.py  # 审计 / token 用量 / 耗时瀑布
 ├── scripts/
-│   ├── run_server.py     # Windows 推荐启动入口（先预热 bge-m3 再起服务）
+│   ├── run_server.py     # 推荐启动入口（先预热 bge-m3 再起服务）
 │   ├── ingest_doc.py     # 知识库文档导入
 │   └── stub_backend.py   # 本地桩后端（链路联调用）
 ├── tests/                # pytest：端到端 + 评测 + 鉴权 + 后端工具
@@ -84,7 +84,7 @@ ai-service/
 cd ai-service
 pip install -r requirements.txt
 cp .env.example .env          # 填 PGVECTOR_DSN；LLM_MODE=mock 即可跑通
-python scripts/run_server.py  # Windows 推荐：先模块级预热 bge-m3 再起服务
+python scripts/run_server.py  # 推荐：先模块级预热 bge-m3 再起服务
 # 备选：python -m app.main
 ```
 
@@ -99,16 +99,12 @@ python scripts/run_server.py  # Windows 推荐：先模块级预热 bge-m3 再�
 3. `.env` 填连接串：`PGVECTOR_DSN=postgresql://postgres:你的密码@localhost:5432/ai_service`
 4. 首次启动自动建表 `kb_chunks`（含 HNSW 索引）并灌入种子语料，无需手动建表。
 
-> Windows 装 pgvector：官方 releases 下载 `pgvector-<ver>-windows-x64.zip`，
-> `lib/*.dll` 拷到 `PostgreSQL/<版本>/lib`、`share/extension/*` 拷到 `share/extension`，
-> 重启后 `CREATE EXTENSION vector;`。
-
 ## Docker 部署
 
 `Dockerfile` + `docker-compose.yml` 把「AI 编排层 + 向量库」打包为两个容器；镜像设计取舍（模型不进镜像 / 密钥不进镜像）见 `Dockerfile` 顶部注释。
 
 ```bash
-# 前置：本机装 Docker Desktop（Windows 开启 WSL2 后端）
+# 前置：本机装 Docker
 cd ai-service
 # .env 调整：PGVECTOR_DSN 的 host 由 localhost 改为容器服务名 pg，并补 POSTGRES_PASSWORD
 #   PGVECTOR_DSN=postgresql://postgres:你的密码@pg:5432/ai_service
