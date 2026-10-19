@@ -24,11 +24,6 @@ psycopg2-binary>=2.9
 # 首次运行自动从 HuggingFace（hf-mirror 镜像）下载模型到 ./models/bge-m3
 sentence-transformers>=3.0
 
-# 真实平台直连（宣武实习管理平台：AES-256-CBC 加密信封 + Sanctum 登录）
-# 见 app/xuanwu_client.py；仅在 .env 配置 XUANWU_* 时用到
-requests>=2.31
-pycryptodome>=3.20
-
 # ---- 以下为可选依赖，按需启用 ----
 # MCP Server（将工具暴露为标准 MCP）：pip install mcp
 # 真实 LLM / Embedding API（OpenAI 兼容）：pip install openai

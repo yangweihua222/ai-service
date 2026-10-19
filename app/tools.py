@@ -13,7 +13,6 @@ from typing import Dict, List
 from app import data, rag
 from app.backend import (
     BackendClient,
-    XuanwuBackend,
     TOOL_ABSENT_TIMES,
     TOOL_DUTY_SCHEDULE,
     TOOL_SUBMIT_LEAVE,
@@ -26,11 +25,6 @@ from app.internship import register_internship_tools
 # 📌 小萱同源：真实后端客户端（调用 Laravel /api/dify/tools/*）。
 #    未配置 BACKEND_BASE_URL 时，真实工具返回友好提示而非报错（演示/联调友好）。
 backend = BackendClient()
-
-# 📌 真实平台直连（宣武实习管理平台，AES 加密协议，见 app/xuanwu_client.py）：
-#    配齐 XUANWU_API_BASE/NUM/PASSWORD 三项时启用，值班等工具优先走真实平台数据。
-#    测试里通过 monkeypatch 把本属性置 None 以保持用例封闭（不发真实网络请求）。
-xuanwu = XuanwuBackend()
 
 
 class NotificationStore:
@@ -95,54 +89,6 @@ async def tool_notification(args: Dict, ctx: RequestContext) -> str:
     return f"[通知已提交] → {target}：{message}"
 
 
-# ===================== 真实平台数据格式化（宣武实习管理平台字段）=====================
-_SHIFT_LABEL = {0: "综合", 1: "白班", 2: "夜班"}
-# 打卡详情里的 check_in_status 语义（逆向平台前端确认）：4=缺卡，6=正常（其余见值）
-_CHECK_STATUS_LABEL = {1: "正常", 2: "迟到", 3: "早退", 4: "缺卡", 6: "正常"}
-
-
-def _count_check_status(item: Dict) -> Dict[int, int]:
-    """统计某条打卡记录里各 check_in_status 的次数。"""
-    counts: Dict[int, int] = {}
-    for grp in (item.get("list") or {}).values():
-        if isinstance(grp, dict):
-            for v in grp.values():
-                if isinstance(v, dict) and "check_in_status" in v:
-                    st = v["check_in_status"]
-                    counts[st] = counts.get(st, 0) + 1
-    return counts
-
-
-def _fmt_absent_line(item: Dict) -> str:
-    """缺勤/打卡统计 → 一行可读文本（学员×日期×班次粒度）。"""
-    name = item.get("name", "?")
-    date = item.get("date", "?")
-    shift = _SHIFT_LABEL.get(item.get("shift_type"), "?")
-    dept = item.get("department") or "-"
-    rate = item.get("attendanceRate")
-    rate_s = f"{rate}%" if isinstance(rate, (int, float)) else str(rate)
-    line = f"{name} | {date} {shift} | {dept} | 出勤率 {rate_s}"
-    counts = _count_check_status(item)
-    if counts:
-        detail = " ".join(
-            f"{_CHECK_STATUS_LABEL.get(k, f'状态{k}')}{v}次" for k, v in sorted(counts.items())
-        )
-        line += f" | {detail}"
-    return line
-
-
-def _fmt_teaching_event_line(item: Dict) -> str:
-    """教学活动 → 一行可读文本。"""
-    type_label = (item.get("type_struct") or {}).get("label", "活动")
-    summary = item.get("summary") or "-"
-    dept = (item.get("department") or {}).get("title") or "-"
-    teacher = (item.get("teacher") or {}).get("name") or "-"
-    venue = item.get("venue") or "-"
-    status = (item.get("status_struct") or {}).get("label") or item.get("status") or "-"
-    t = (item.get("start_time") or item.get("estimated_start_time") or "")[:10]
-    return f"[{type_label}] {summary} | {dept} | 教师:{teacher} | 地点:{venue} | {t} | {status}"
-
-
 # ===================== 真实后端工具（小萱同源，调用 Laravel /api/dify/tools/*）=====================
 # 📌 实战③ 工具调用异常：网络/超时统一在 backend.call_tool 抛错，此处 try/except 转成可读文本，
 #    不会因后端抖动让整个对话崩溃（Agent 层 also 有兜底）。
@@ -169,36 +115,9 @@ async def tool_submit_leave(args: Dict, ctx: RequestContext) -> str:
 
 
 async def tool_query_duty(args: Dict, ctx: RequestContext) -> str:
-    """真实工具：值班查询。
-    数据源优先级：真实平台（XuanwuBackend，AES 加密协议）> Laravel /dify/tools/get_duty_schedule。
-    真实平台的排班接口无「按人查询」参数 → 分页拉全量后客户端按姓名/日期过滤。"""
-    name = (args.get("name") or "").strip()
+    """真实工具：值班查询 → Laravel /dify/tools/get_duty_schedule。"""
     start_time = args.get("start_time", "")
     end_time = args.get("end_time", "")
-    # ---- 优先走真实平台直连 ----
-    if xuanwu is not None and xuanwu.configured:
-        try:
-            rows, total = await xuanwu.query_duty(
-                name=name, start_time=start_time, end_time=end_time
-            )
-        except Exception as e:
-            return f"[值班查询失败] 真实平台调用异常：{e}"
-        if not rows:
-            scope = f"「{name}」" if name else "该时间段"
-            return f"[值班安排] 平台共 {total} 条排班记录，未匹配到 {scope} 的值班记录。"
-        lines = [
-            "{} 周{} | 值班医生:{} | 值班学生:{} | 考勤组:{}".format(
-                it.get("date", "?"),
-                it.get("week", "?"),
-                it.get("doctor_name", "?"),
-                (it.get("student") or {}).get("name", "-"),
-                it.get("attendance_configs_name", "-"),
-            )
-            for it in rows[:20]
-        ]
-        tail = f"\n(共匹配 {len(rows)} 条，显示前 20 条)" if len(rows) > 20 else ""
-        return "[值班安排·真实平台数据]\n" + "\n".join(lines) + tail
-    # ---- 回退：Laravel 明文契约（/dify/tools/*） ----
     if not backend.configured:
         return f"[值班查询·演示] {_NOT_CONFIGURED}"
     payload = {
@@ -214,27 +133,9 @@ async def tool_query_duty(args: Dict, ctx: RequestContext) -> str:
 
 
 async def tool_query_absent(args: Dict, ctx: RequestContext) -> str:
-    """真实工具：缺勤/打卡统计查询。
-    数据源优先级：真实平台（XuanwuBackend，attendance_statistics）> Laravel /dify/tools/get_absent_times。
-    真实平台接口原生支持 name/start/end 过滤，返回「学员×日期×班次」粒度打卡统计（含出勤率与缺卡次数）。"""
-    name = (args.get("name") or "").strip()
+    """真实工具：缺勤/打卡统计查询 → Laravel /dify/tools/get_absent_times。"""
     start_date = args.get("start_date", "")
     end_date = args.get("end_date", "")
-    # ---- 优先走真实平台直连 ----
-    if xuanwu is not None and xuanwu.configured:
-        try:
-            rows, total = await xuanwu.query_absent(
-                name=name, start_date=start_date, end_date=end_date
-            )
-        except Exception as e:
-            return f"[缺勤查询失败] 真实平台调用异常：{e}"
-        if not rows:
-            scope = f"「{name}」" if name else "该时间段"
-            return f"[打卡统计] 平台共 {total} 条记录，未匹配到 {scope} 的打卡/缺勤记录。"
-        lines = [_fmt_absent_line(it) for it in rows[:30]]
-        tail = f"\n(共匹配 {len(rows)} 条，显示前 30 条)" if len(rows) > 30 else ""
-        return "[打卡统计·真实平台数据]\n" + "\n".join(lines) + tail
-    # ---- 回退：Laravel 明文契约（/dify/tools/*） ----
     if not backend.configured:
         return f"[缺勤查询·演示] {_NOT_CONFIGURED}"
     payload = {
@@ -250,24 +151,9 @@ async def tool_query_absent(args: Dict, ctx: RequestContext) -> str:
 
 
 async def tool_query_teaching_event(args: Dict, ctx: RequestContext) -> str:
-    """真实工具：教学活动查询（带教老师视角）。
-    数据源优先级：真实平台（XuanwuBackend，teaching_events）> Laravel /dify/tools/get_teaching_event。"""
+    """真实工具：教学活动查询（带教老师视角）→ Laravel /dify/tools/get_teaching_event。"""
     start_date = args.get("start_date", "")
     end_date = args.get("end_date", "")
-    # ---- 优先走真实平台直连 ----
-    if xuanwu is not None and xuanwu.configured:
-        try:
-            rows, total = await xuanwu.query_teaching_events(
-                start_date=start_date, end_date=end_date
-            )
-        except Exception as e:
-            return f"[教学活动查询失败] 真实平台调用异常：{e}"
-        if not rows:
-            return f"[教学活动] 平台共 {total} 条活动，未匹配到该时间段的教学活动。"
-        lines = [_fmt_teaching_event_line(it) for it in rows[:30]]
-        tail = f"\n(共匹配 {len(rows)} 条，显示前 30 条)" if len(rows) > 30 else ""
-        return "[教学活动·真实平台数据]\n" + "\n".join(lines) + tail
-    # ---- 回退：Laravel 明文契约（/dify/tools/*） ----
     if not backend.configured:
         return f"[教学活动查询·演示] {_NOT_CONFIGURED}"
     payload = {

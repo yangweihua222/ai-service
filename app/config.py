@@ -47,15 +47,6 @@ BACKEND_HMAC_ENABLED = _env("BACKEND_HMAC_ENABLED", "true").lower() == "true"
 BACKEND_HMAC_SECRET = _env("BACKEND_HMAC_SECRET", "")
 BACKEND_HMAC_SKEW_SEC = int(_env("BACKEND_HMAC_SKEW_SEC", "300"))  # 5 分钟时间窗，防重放
 
-# ============ 真实平台直连（宣武实习管理平台，AES 加密协议）============
-# 📌 协议见 app/xuanwu_client.py：Laravel Sanctum + 双层 base64 + AES-256-CBC。
-#    配齐三项即启用「真实平台数据源」（优先于 BACKEND_BASE_URL 的明文契约）；
-#    凭据只写本地 .env，不进代码库/简历/文档。
-XUANWU_API_BASE = _env("XUANWU_API_BASE", "")   # 例：https://your-hospital.example.com/api
-XUANWU_NUM = _env("XUANWU_NUM", "")             # 登录账号（手机号）
-XUANWU_PASSWORD = _env("XUANWU_PASSWORD", "")
-XUANWU_TIMEOUT = float(_env("XUANWU_TIMEOUT", "15"))
-
 # ============ RAG / Embedding ============
 RAG_TOP_K = int(_env("RAG_TOP_K", "3"))
 CHUNK_SIZE = int(_env("CHUNK_SIZE", "120"))

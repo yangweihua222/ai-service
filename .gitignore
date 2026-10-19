@@ -47,3 +47,7 @@ INTERVIEW_MAP.md
 _audit_resume.py
 debug_rag_steps.py
 app/xuanwu_client.py
+
+# 本地备考/补丁脚本（含面试备考内容，仅本地留存）
+scripts/patch_bank_*.py
+.local_backup/

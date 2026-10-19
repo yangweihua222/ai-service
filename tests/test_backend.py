@@ -34,12 +34,6 @@ def ctx():
                           role=Role.STUDENT, user_num="2021001")
 
 
-@pytest.fixture(autouse=True)
-def _no_xuanwu(monkeypatch):
-    """屏蔽真实平台数据源（tools.xuanwu），保证用例走可 mock 的 Laravel 契约分支、不发真实网络请求。"""
-    monkeypatch.setattr(tools_module, "xuanwu", None)
-
-
 @pytest.mark.asyncio
 async def test_submit_leave_parses_envelope(ctx):
     cli = _make_client(_router("submit_leave", {"result": "请假成功"}))
