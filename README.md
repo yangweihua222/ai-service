@@ -34,11 +34,11 @@ flowchart LR
 
 ## 界面预览
 
-完整对话录屏（实习平台悬浮球直连本服务，2 次工具调用 + 1 次 RAG 检索 + 观测面板反查）：[docs/demo/ai-assistant-demo.webm](docs/demo/ai-assistant-demo.webm)（浏览器可直接播放）
+完整对话录屏（实习平台悬浮球直连本服务，2 次工具调用 + 1 次 RAG 检索 + 观测面板反查）：[docs/demo/ai-assistant-demo.webm](docs/demo/ai-assistant-demo.webm)（[▶ 在线播放](https://testingcf.jsdelivr.net/gh/yangweihua222/ai-service@master/docs/demo/ai-assistant-demo.webm)，GitHub 上为下载链接）
 
 | 可观测面板（请求审计 + 工具调用统计） | 单次 trace 时间瀑布（定位慢在哪个阶段） |
 |---|---|
-| ![可观测面板](docs/screenshots/05-observability.png) | ![trace 瀑布](docs/screenshots/06-observability-trace.png) |
+| ![可观测面板](https://testingcf.jsdelivr.net/gh/yangweihua222/ai-service@master/docs/screenshots/05-observability.png) | ![trace 瀑布](https://testingcf.jsdelivr.net/gh/yangweihua222/ai-service@master/docs/screenshots/06-observability-trace.png) |
 
 ## 目录结构
 
