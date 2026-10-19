@@ -5,16 +5,14 @@
 ## 特性
 
 - **ReAct 编排**（规划 → 调用 → 观察 → 修正），可插拔 `Planner`：Mock 关键词路由（零成本跑通）/ 真实 LLM tool_calls
-- **22 个注册工具**，按职责分组：
+- **20 个注册工具**，按职责分组：
   - 实习平台 ×13：查轮转 / 值班 / 考勤 / 出勤统计 / 请假记录 / 教学活动 / 公告 / 考核 / 病历 / 待办汇总 / 提交请假 / 科室学生 / 待审批，统一回调 `/api/v1/ai/tools/call` 并透传用户 token
   - 知识检索 ×2：临床知识库 RAG / 系统使用说明 RAG
-  - 教学数据 ×2：Text2SQL 学员数据查询（真执行）/ 轮转可行性检测（贪心 + 局部搜索）
   - 通用后端 ×5：提交请假 / 值班查询 / 缺勤查询 / 教学活动（`/api/dify/tools/*`）+ 站内通知（进程内模拟投递）
 - **LLM 抽象层**：Mock / OpenAI 兼容（通义 / DeepSeek / 智谱改 base 即复用），标准库 `urllib` 实现，无额外依赖
 - **多租户 RBAC**：租户隔离 + admin / teacher / student 三级权限；向量侧按 `tenant_id` 行级过滤（`WHERE tenant_id=?`），工具执行前二次校验
 - **RAG 真向量库**：pgvector（`kb_chunks` 表 + HNSW 索引）；**混合检索** = 向量召回 + BM25 → RRF 融合 → Rerank
 - **正式 Embedding**：本地 bge-m3（`sentence-transformers` 加载，1024 维，L2 归一化，数据不出域；首次自动下载到 `./models/bge-m3`）
-- **Text2SQL 真执行**：本地 SQLite 教学库真跑 SQL；执行前过安全闸门（只读校验 + 强制租户过滤），租户值参数绑定防注入
 - **可观测性**：`/observability` 面板——请求审计、token 用量、工具调用统计、单次 trace 时间瀑布
 
 ## 架构
@@ -25,24 +23,22 @@ flowchart LR
     F --> AG["ReAct Agent<br/>规划 → 工具 → 观察 → 再决策"]
     AG -.->|"按角色过滤工具白名单"| RB["RBAC<br/>X-Role / 租户隔离"]
     AG --> RAG["query_knowledge_base<br/>临床知识库 RAG"]
-    AG --> SQL["query_teaching_data<br/>Text2SQL 学员数据"]
     AG --> IT["internship_* 工具 ×13"]
     IT -->|"回调工具网关<br/>透传 X-Internship-Token"| LA["实习平台 Laravel API :8000"]
     RAG --> PG[("PostgreSQL + pgvector<br/>向量召回 + BM25 → RRF")]
-    SQL --> SL[("SQLite 教学库<br/>只读闸门 + 租户绑定")]
     AG <--> LLM["LLM qwen3.8-max-0902<br/>enable_thinking=0"]
     F --> OBS["/observability<br/>审计 / token / 耗时瀑布"]
 ```
 
-**关键设计**：Agent 不直接碰业务库。查实习数据一律走 `internship_*` 工具回调 Laravel 网关，由业务后端按调用者 token 判定权限（学生调教师工具 = 403）；RAG 与 Text2SQL 只读，且都在 SQL 层强制 `tenant_id` 过滤。
+**关键设计**：Agent 不直接碰业务库。查实习数据一律走 `internship_*` 工具回调 Laravel 网关，由业务后端按调用者 token 判定权限（学生调教师工具 = 403）；RAG 检索只读，且在 SQL 层强制 `tenant_id` 过滤。
 
 ## 界面预览
 
-完整对话录屏（2 次工具调用 + 1 次 RAG 检索 + 观测面板反查）：[docs/demo/ai-service-demo.webm](docs/demo/ai-service-demo.webm)（浏览器可直接播放）
+完整对话录屏（工具调用 + RAG 检索 + 观测面板反查）：[docs/demo/ai-service-demo.webm](docs/demo/ai-service-demo.webm)（浏览器可直接播放）
 
-| Text2SQL 工具调用（可见生成的 SQL 与观察结果） | RAG 临床知识库（可见召回片段与引用） |
+| 自带聊天页（可见工具调用步骤与参数） | RAG 临床知识库（可见召回片段与引用） |
 |---|---|
-| ![Text2SQL](docs/screenshots/02-tool-text2sql.png) | ![RAG](docs/screenshots/04-rag-dka.png) |
+| ![聊天页](docs/screenshots/01-ai-chat-page.png) | ![RAG](docs/screenshots/04-rag-dka.png) |
 
 | 可观测面板（请求审计 + 工具调用统计） | 单次 trace 时间瀑布（定位慢在哪个阶段） |
 |---|---|
@@ -59,10 +55,10 @@ ai-service/
 │   ├── llm.py            # LLM 抽象层（Mock + OpenAI 兼容）
 │   ├── agent.py          # ReAct 引擎 + Planner/Synthesizer + 防死循环 + 反思
 │   ├── tools_registry.py # 工具注册表（JSON Schema + 权限）
-│   ├── tools.py          # 通用工具实现（RAG / Text2SQL / 轮转检测 / 旧平台后端工具）
+│   ├── tools.py          # 通用工具实现（RAG / 轮转检测 / 通用后端工具）
 │   ├── internship.py     # 实习平台 13 个工具（/api/v1/ai/tools/call，透传用户 token）
 │   ├── rag.py            # RAG 检索 + 评测
-│   ├── data.py           # Text2SQL + 轮转分配引擎（贪心 + 局部搜索）
+│   ├── data.py           # 轮转分配引擎（贪心 + 局部搜索）
 │   ├── memory.py         # 对话记忆（短期 + 长期压缩）
 │   ├── rbac.py           # 多租户 RBAC + 鉴权依赖
 │   ├── backend.py        # 通用后端客户端（/api/dify/tools/*）
@@ -121,7 +117,7 @@ docker compose up -d --build
 curl http://localhost:8000/health
 ```
 
-- **挂载/持久化**：`./models`（bge-m3 权重，不进镜像）→ `/app/models`；命名卷 `ai_teaching_db`（Text2SQL 教学库）、`pgdata`（PostgreSQL 数据）。
+- **挂载/持久化**：`./models`（bge-m3 权重，不进镜像）→ `/app/models`；命名卷 `pgdata`（PostgreSQL 数据）。
 - **不用真向量库**：`EMBEDDING_MODE=mock` + 注释掉 `depends_on: pg` 即可纯 mock 跑通。
 - **真 LLM**：`.env` 设 `LLM_MODE=openai` + `OPENAI_API_KEY`，容器内经 `env_file` 注入生效。
 
@@ -133,14 +129,13 @@ curl http://localhost:8000/health
 # 多工具编排
 curl -X POST http://localhost:8000/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"message":"张三内科成绩低于80分，请预警"}'
+  -d '{"message":"帮我查一下本周的值班安排"}'
 
 # 当前角色可见工具
 curl http://localhost:8000/api/v1/tools
 
 # 内置评测接口
 curl -X POST http://localhost:8000/api/v1/rag/eval
-curl -X POST http://localhost:8000/api/v1/text2sql/eval
 ```
 
 ## 接口自检
@@ -149,8 +144,6 @@ curl -X POST http://localhost:8000/api/v1/text2sql/eval
 
 - `GET /health` → `{"status":"ok"}`；`GET /api/v1/tools` 按角色返回工具清单
 - `POST /api/v1/rag/eval` → RAG 检索评测（首次含 bge-m3 加载约 20s，后续秒回）
-- `POST /api/v1/text2sql/eval` → Text2SQL 命中 + 真执行验证
-- `POST /api/v1/text2sql/tenant-isolation` → 跨租户隔离验证（两租户行数互不相同）
 - `POST /api/v1/chat` → 综合回答带 RAG 引用；`/api/v1/chat/stream` → SSE 事件流（steps → token → [DONE]）
 
 ## 知识库文档导入（ingest）
